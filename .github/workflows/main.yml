@@ -1,0 +1,37 @@
+name: Run GK Quiz Scraper
+
+on:
+  schedule:
+    - cron: '30 14 * * *'  # Runs every day at 8 PM IST (2:30 PM UTC, IST is UTC+5:30)
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  scrape_and_send:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'  # Match your Python version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run script
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHANNEL_USERNAME: ${{ secrets.TELEGRAM_CHANNEL_USERNAME }}
+          MONGO_CONNECTION_STRING: ${{ secrets.MONGO_CONNECTION_STRING }}
+        run: python main.py
+
+      - name: Clean up (optional)
+        if: always()
+        run: |
+          # Add any cleanup steps if needed (e.g., removing temporary files)
+          echo "Cleanup completed"
