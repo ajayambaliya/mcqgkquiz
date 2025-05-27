@@ -50,11 +50,23 @@ def should_reset_count():
 
 # Function to fetch links from a URL
 def fetch_links(url):
-    response = requests.get(url)
-    soup = BeautifulSoup(response.text, 'html.parser')
-    div = soup.find('div', class_='inside_post column content_width')
-    links = div.find_all('a', href=True)
-    return {i+1: link['href'] for i, link in enumerate(links)}
+    try:
+        response = requests.get(url)
+        if response.status_code != 200:
+            print(f"Failed to fetch URL {url}. Status code: {response.status_code}")
+            return {}
+        soup = BeautifulSoup(response.text, 'html.parser')
+        div = soup.find('div', class_='inside_post column content_width')
+        if div is None:
+            print(f"Error: Could not find div with class 'inside_post column content_width' on {url}")
+            # Optionally, log the HTML for debugging
+            print("Page HTML snippet:", soup.prettify()[:1000])  # Print first 1000 chars of HTML
+            return {}
+        links = div.find_all('a', href=True)
+        return {i+1: link['href'] for i, link in enumerate(links)}
+    except Exception as e:
+        print(f"Error fetching links from {url}: {e}")
+        return {}
 
 # Function to scrape content from the selected links
 def scrape_content_from_links(selected_links):
