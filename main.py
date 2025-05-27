@@ -76,46 +76,78 @@ def fetch_links(url):
 def scrape_content_from_links(selected_links):
     all_questions = []
     for link in selected_links:
-        response = requests.get(link)
-        soup = BeautifulSoup(response.text, 'html.parser')
-        post_content = soup.find('div', class_='inside_post column content_width')
-        if post_content:
-            questions = extract_questions(post_content)
-            all_questions.extend(questions)
+        try:
+            response = requests.get(link)
+            if response.status_code != 200:
+                print(f"Failed to fetch quiz page {link}. Status code: {response.status_code}")
+                continue
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # Find the quiz container
+            quiz_container = soup.find('div', class_='ques_print')
+            if quiz_container:
+                questions = extract_questions(quiz_container)
+                if questions:
+                    all_questions.extend(questions)
+                else:
+                    print(f"No questions extracted from {link}.")
+            else:
+                print(f"No quiz content found on {link}. HTML snippet:")
+                print(soup.prettify()[:1000])  # Print first 1000 chars for debugging
+        except Exception as e:
+            print(f"Error scraping {link}: {e}")
     return all_questions
 
 # Function to extract questions, options, correct answers, and explanations
-def extract_questions(post_content):
+def extract_questions(quiz_container):
     questions = []
-    quiz_questions = post_content.find_all('div', class_='wp_quiz_question testclass')
+    # Find all question divs within the quiz container
+    quiz_questions = quiz_container.find_all('div', class_='wp_quiz_question testclass')
     for quiz in quiz_questions:
-        question_text_full = quiz.text.strip()  # Keep full text including number (e.g., "16. ...")
-        question_text = question_text_full  # Keep number for inline display
-        
+        # Extract question text including the number
+        question_text = quiz.text.strip()
+        quesno_span = quiz.find('span', class_='quesno')
+        if quesno_span:
+            question_text = quesno_span.text.strip() + quiz.text.replace(quesno_span.text, '', 1).strip()
+
+        # Extract options
         options_div = quiz.find_next('div', class_='wp_quiz_question_options')
+        if not options_div:
+            print(f"Warning: No options found for question: {question_text}")
+            continue
         options_raw = options_div.get_text(separator='\n').split('\n')
         options = []
         for opt in options_raw:
-            clean_option = re.sub(r'^\s*\[.\]\s*', '', opt).strip()
+            clean_option = re.sub(r'^\[.\]\s*', '', opt).strip()
             if clean_option:
                 options.append(clean_option)
-        
+
+        # Extract correct answer
         answer_div = quiz.find_next('div', class_='wp_basic_quiz_answer')
-        correct_answer_text = answer_div.find('div', class_='ques_answer').text.strip()
-        correct_answer_letter = correct_answer_text.split(':')[-1].strip()[0]
-        
-        if correct_answer_letter not in ['A', 'B', 'C', 'D']:
-            print(f"Warning: Unexpected correct answer letter '{correct_answer_letter}' for question: {question_text}")
-            correct_answer_index = -1
-        else:
+        if not answer_div:
+            print(f"Warning: No answer div found for question: {question_text}")
+            continue
+        correct_answer_div = answer_div.find('div', class_='ques_answer')
+        if not correct_answer_div:
+            print(f"Warning: No correct answer found for question: {question_text}")
+            continue
+        correct_answer_text = correct_answer_div.text.strip()
+        # Extract the letter (e.g., 'D' from 'Correct Answer: D [Department of Science and Technology]')
+        correct_answer_match = re.search(r'Correct Answer:\s*([A-D])', correct_answer_text)
+        if not correct_answer_match:
+            print(f"Warning: Could not parse correct answer for question: {question_text}")
+            continue
+        correct_answer_letter = correct_answer_match.group(1)
+        try:
             correct_answer_index = ['A', 'B', 'C', 'D'].index(correct_answer_letter)
-        
-        if correct_answer_index == -1:
-            correct_answer_index = find_correct_answer_second_method(quiz)
-        
+        except ValueError:
+            print(f"Warning: Invalid correct answer letter '{correct_answer_letter}' for question: {question_text}")
+            continue
+
+        # Extract explanation
         explanation_div = answer_div.find('div', class_='answer_hint')
         explanation_text = explanation_div.text.replace('Notes:', '').strip() if explanation_div else "No explanation available."
-        
+
+        # Ensure valid question data
         if len(options) >= 2 and correct_answer_index != -1:
             questions.append({
                 'question': question_text,
@@ -123,8 +155,10 @@ def extract_questions(post_content):
                 'correct_answer': correct_answer_index,
                 'explanation': explanation_text
             })
-    return questions
+        else:
+            print(f"Skipping question due to invalid options or answer: {question_text}")
 
+    return questions
 def find_correct_answer_second_method(quiz):
     try:
         correct_answer_div = quiz.find('div', class_='correct_answer')
