@@ -56,14 +56,18 @@ def fetch_links(url):
             print(f"Failed to fetch URL {url}. Status code: {response.status_code}")
             return {}
         soup = BeautifulSoup(response.text, 'html.parser')
-        div = soup.find('div', class_='inside_post column content_width')
-        if div is None:
-            print(f"Error: Could not find div with class 'inside_post column content_width' on {url}")
-            # Optionally, log the HTML for debugging
-            print("Page HTML snippet:", soup.prettify()[:1000])  # Print first 1000 chars of HTML
+        # Find all divs with class 'home-post-item'
+        post_items = soup.find_all('div', class_='home-post-item')
+        if not post_items:
+            print(f"Error: Could not find div with class 'home-post-item' on {url}")
             return {}
-        links = div.find_all('a', href=True)
-        return {i+1: link['href'] for i, link in enumerate(links)}
+        # Extract links from <a> tags within <h3> elements
+        links = {}
+        for i, item in enumerate(post_items, 1):
+            link_tag = item.find('h3').find('a', href=True) if item.find('h3') else None
+            if link_tag:
+                links[i] = link_tag['href']
+        return links
     except Exception as e:
         print(f"Error fetching links from {url}: {e}")
         return {}
